@@ -140,6 +140,28 @@ export const products = [
   },
 ]
 
+export const draftProducts = [
+  {
+    id: 'design-dispatch',
+    name: 'Design Dispatch',
+    creator: 'Maya Chen',
+    handle: '$mayamakes',
+    price: 12,
+    interval: 'month',
+    category: 'Memberships',
+    sales: 286,
+    rating: 4.8,
+    glyph: '✉',
+    tone: 'butter',
+    tagline: 'A monthly letter about running a small, profitable design studio.',
+    description:
+      'Behind-the-scenes notes on pricing, client work, and the systems Maya uses to keep a one-person studio calm and profitable.',
+    includes: ['Monthly studio letter', 'Pricing templates', 'Archive access', 'Member Q&A'],
+    license: 'Member access',
+    status: 'Draft',
+  },
+]
+
 export const categories = ['All', 'Design', 'Templates', 'Courses', 'SaaS', 'Assets', 'Memberships']
 
 export const orders = [

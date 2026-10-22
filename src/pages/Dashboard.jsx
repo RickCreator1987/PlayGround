@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import {
   orders as seedOrders,
-  dashboardProducts,
   payouts as seedPayouts,
   webhooks as seedWebhooks,
   revenueSeries,
   formatMoney,
+  formatCompact,
 } from '../data.js'
 import {
   ArrowRight,
@@ -26,6 +26,7 @@ import {
   Globe,
   Refresh,
 } from '../components/Icons.jsx'
+import ProductForm from '../components/ProductForm.jsx'
 import {
   FEATURED_CODE,
   discountLabel,
@@ -34,6 +35,7 @@ import {
   normalizeCode,
   validateDiscountDraft,
 } from '../lib/discounts.js'
+import { createProductId, normalizeProductDraft, productStyle } from '../lib/products.js'
 
 const navItems = [
   { id: 'overview', label: 'Overview', icon: Sparkle },
@@ -63,6 +65,11 @@ function buildChart(values, width = 720, height = 210) {
   return { line, area, max, points }
 }
 
+function salesLabel(value) {
+  const count = Number(value) || 0
+  return `${count.toLocaleString()} ${count === 1 ? 'sale' : 'sales'}`
+}
+
 function Trend({ value, label }) {
   return (
     <span className={`trend ${value >= 0 ? 'up' : 'down'}`}>
@@ -71,9 +78,11 @@ function Trend({ value, label }) {
   )
 }
 
-export default function Dashboard({ orders, codes = [], onCodesChange, onNavigate, onToast }) {
+export default function Dashboard({ orders, codes = [], products = [], onCodesChange, onProductsChange, onNavigate, onToast }) {
   const [section, setSection] = useState('overview')
   const [showDiscountForm, setShowDiscountForm] = useState(false)
+  const [showProductForm, setShowProductForm] = useState(false)
+  const [editingProduct, setEditingProduct] = useState(null)
 
   const allOrders = useMemo(() => [...orders, ...seedOrders], [orders])
   const chart = useMemo(() => buildChart(revenueSeries), [])
@@ -82,6 +91,9 @@ export default function Dashboard({ orders, codes = [], onCodesChange, onNavigat
     [codes],
   )
   const activeDiscounts = useMemo(() => codes.filter((code) => isDiscountActive(code)).length, [codes])
+  const myProducts = useMemo(() => products.filter((product) => product.creator === 'Maya Chen'), [products])
+  const liveProducts = myProducts.filter((product) => (product.status || 'Live') === 'Live').length
+  const draftProducts = myProducts.length - liveProducts
 
   const customers = useMemo(() => {
     const map = new Map()
@@ -159,6 +171,54 @@ export default function Dashboard({ orders, codes = [], onCodesChange, onNavigat
     onToast(`${code.code} deleted.`)
   }
 
+  const openProductForm = (product = null) => {
+    setSection('products')
+    setEditingProduct(product)
+    setShowProductForm(true)
+  }
+
+  const closeProductForm = () => {
+    setShowProductForm(false)
+    setEditingProduct(null)
+  }
+
+  const saveProduct = (draft) => {
+    const result = normalizeProductDraft(draft)
+    if (!result.ok) return result
+    const value = result.value
+
+    if (editingProduct) {
+      onProductsChange(products.map((product) => (
+        product.id === editingProduct.id ? { ...product, ...value } : product
+      )))
+      onToast(`${value.name} updated.`)
+    } else {
+      const entry = {
+        ...value,
+        ...productStyle(value.category),
+        id: createProductId(value.name, products),
+        creator: 'Maya Chen',
+        handle: '$mayamakes',
+        sales: 0,
+        rating: 5,
+        revenue: 0,
+        createdAt: new Date().toISOString(),
+      }
+      onProductsChange([entry, ...products])
+      onToast(`${value.name} ${value.status === 'Live' ? 'is live on your storefront.' : 'saved as a draft.'}`)
+    }
+
+    closeProductForm()
+    return { ok: true }
+  }
+
+  const deleteProduct = (product) => {
+    if (!window.confirm(`Delete ${product.name}? Existing orders will be kept.`)) return
+    onProductsChange(products.filter((candidate) => candidate.id !== product.id))
+    closeProductForm()
+    onToast(`${product.name} deleted.`)
+  }
+
   return (
     <main className="dashboard">
       <div className="shell dashboard-grid">
@@ -180,7 +240,10 @@ export default function Dashboard({ orders, codes = [], onCodesChange, onNavigat
                   key={item.id}
                   type="button"
                   className={`dash-nav-item ${section === item.id ? 'is-active' : ''}`}
-                  onClick={() => setSection(item.id)}
+                  onClick={() => {
+                    setSection(item.id)
+                    closeProductForm()
+                  }}
                 >
                   <Icon size={17} />
                   <span>{item.label}</span>
@@ -229,7 +292,7 @@ export default function Dashboard({ orders, codes = [], onCodesChange, onNavigat
               <button type="button" className="btn btn-outline" onClick={() => onNavigate('home')}>
                 <Globe size={15} /> Storefront
               </button>
-              <button type="button" className="btn btn-primary" onClick={() => onToast('Product editor is not part of this demo.')}>
+              <button type="button" className="btn btn-primary" onClick={() => openProductForm()}>
                 <Sparkle size={15} /> New product
               </button>
             </div>
@@ -331,14 +394,14 @@ export default function Dashboard({ orders, codes = [], onCodesChange, onNavigat
                     </button>
                   </div>
                   <div className="top-products">
-                    {dashboardProducts.map((product) => (
+                    {myProducts.slice(0, 3).map((product) => (
                       <div className="top-product" key={product.id}>
                         <span className={`mini-thumb tone-${product.tone}`}>{product.glyph}</span>
                         <div className="top-product-info">
                           <strong>{product.name}</strong>
-                          <span>{product.sales.toLocaleString()} sales · {product.status}</span>
+                          <span>{salesLabel(product.sales)} · {product.status || 'Live'}</span>
                         </div>
-                        <span className="top-product-rev">${(product.revenue / 1000).toFixed(1)}k</span>
+                        <span className="top-product-rev">${formatCompact(product.revenue ?? product.price * product.sales)}</span>
                       </div>
                     ))}
                   </div>
@@ -373,29 +436,59 @@ export default function Dashboard({ orders, codes = [], onCodesChange, onNavigat
               <div className="panel-head">
                 <div>
                   <h3>Your products</h3>
-                  <span className="panel-sub">3 products · 2 live · 1 draft</span>
+                  <span className="panel-sub">
+                    {myProducts.length} {myProducts.length === 1 ? 'product' : 'products'} · {liveProducts} live · {draftProducts} draft
+                  </span>
                 </div>
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => onToast('Product editor is not part of this demo.')}>
-                  <Sparkle size={14} /> New product
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => (showProductForm ? closeProductForm() : openProductForm())}
+                >
+                  {showProductForm ? 'Close form' : <><Plus size={14} /> New product</>}
                 </button>
               </div>
+
+              {showProductForm ? (
+                <ProductForm
+                  product={editingProduct}
+                  onSave={saveProduct}
+                  onDelete={deleteProduct}
+                  onCancel={closeProductForm}
+                />
+              ) : null}
+
               <div className="stack-list">
-                {dashboardProducts.map((product) => (
+                {myProducts.length ? myProducts.map((product) => (
                   <div className="product-row" key={product.id}>
                     <span className={`mini-thumb tone-${product.tone}`}>{product.glyph}</span>
                     <div className="product-row-info">
                       <strong>{product.name}</strong>
-                      <span>{formatMoney(product.price, product.interval)} · {product.sales.toLocaleString()} sales</span>
+                      <span>{formatMoney(product.price, product.interval)} · {salesLabel(product.sales)}</span>
                     </div>
-                    <span className={`status-pill ${product.status === 'Live' ? 'is-live' : 'is-draft'}`}>
-                      {product.status}
+                    <span className={`status-pill ${(product.status || 'Live') === 'Live' ? 'is-live' : 'is-draft'}`}>
+                      {product.status || 'Live'}
                     </span>
-                    <span className="product-row-rev">${product.revenue.toLocaleString()}</span>
-                    <button type="button" className="icon-btn row-action" onClick={() => onToast(`${product.name} editor is not part of this demo.`)}>
+                    <span className="product-row-rev">${(product.revenue ?? product.price * product.sales).toLocaleString()}</span>
+                    <button
+                      type="button"
+                      className="icon-btn row-action"
+                      onClick={() => openProductForm(product)}
+                      aria-label={`Edit ${product.name}`}
+                      title={`Edit ${product.name}`}
+                    >
                       <ArrowRight size={16} />
                     </button>
                   </div>
-                ))}
+                )) : (
+                  <div className="empty-state">
+                    <h3>No products yet</h3>
+                    <p>Create your first product and it will appear on your storefront.</p>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => openProductForm()}>
+                      <Plus size={14} /> Create product
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="panel-foot-note">
                 <Refresh size={14} /> Products are delivered instantly after Cash App confirmation.

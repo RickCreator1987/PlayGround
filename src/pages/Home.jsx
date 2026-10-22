@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import ProductCard from '../components/ProductCard.jsx'
-import { products, categories, steps, testimonials, formatCompact } from '../data.js'
+import { categories, steps, testimonials, formatCompact } from '../data.js'
 import {
   ArrowRight,
   Check,
@@ -25,7 +25,7 @@ const logos = ['northstar', 'Lumen', 'vertex', 'FOLD', 'Orbital', 'paperlane']
 
 const heroQr = 'https://cash.app/$mayamakes/49'
 
-export default function Home({ onBuy, onNavigate, onSection, onToast, featuredPromo }) {
+export default function Home({ products = [], onBuy, onNavigate, onSection, onToast, featuredPromo }) {
   const [category, setCategory] = useState('All')
   const [query, setQuery] = useState('')
   const [showAll, setShowAll] = useState(false)
@@ -40,9 +40,15 @@ export default function Home({ onBuy, onNavigate, onSection, onToast, featuredPr
     }
   }
 
+  const liveProducts = useMemo(
+    () => products.filter((product) => (product.status || 'Live') === 'Live'),
+    [products],
+  )
+  const demoProduct = liveProducts.find((product) => product.id === 'nexus-ui') || liveProducts[0] || null
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return products.filter((product) => {
+    return liveProducts.filter((product) => {
       const matchesCategory = category === 'All' || product.category === category
       const matchesQuery =
         !needle ||
@@ -52,7 +58,7 @@ export default function Home({ onBuy, onNavigate, onSection, onToast, featuredPr
         product.tagline.toLowerCase().includes(needle)
       return matchesCategory && matchesQuery
     })
-  }, [category, query])
+  }, [category, query, liveProducts])
 
   const visible = showAll ? filtered : filtered.slice(0, 8)
 
@@ -222,8 +228,13 @@ export default function Home({ onBuy, onNavigate, onSection, onToast, featuredPr
                   <code>{featuredPromo.code}</code>
                   <Copy size={16} />
                 </button>
-                <button type="button" className="btn btn-primary" onClick={() => onBuy(products[0])}>
-                  Try it on a $49 product <ArrowRight />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => demoProduct && onBuy(demoProduct)}
+                  disabled={!demoProduct}
+                >
+                  {demoProduct ? `Try it on ${demoProduct.name}` : 'Explore products'} <ArrowRight />
                 </button>
                 <span className="promo-fine">Applied instantly in checkout · demo mode</span>
               </div>
@@ -241,7 +252,7 @@ export default function Home({ onBuy, onNavigate, onSection, onToast, featuredPr
               <p>Independent work, priced fairly, delivered the moment the payment lands.</p>
             </div>
             <div className="market-meta">
-              <span className="live-pill"><span className="live-dot" /> 84 products live</span>
+              <span className="live-pill"><span className="live-dot" /> {liveProducts.length} {liveProducts.length === 1 ? 'product' : 'products'} live</span>
             </div>
           </div>
 
@@ -351,8 +362,13 @@ export default function Home({ onBuy, onNavigate, onSection, onToast, featuredPr
               <li><span><Check size={15} /></span> Instant license delivery and webhooks on payment</li>
             </ul>
             <div className="cash-actions">
-              <button type="button" className="btn btn-primary" onClick={() => onBuy(products[0])}>
-                Try a $49 checkout <ArrowRight />
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => demoProduct && onBuy(demoProduct)}
+                disabled={!demoProduct}
+              >
+                Try a Cash App checkout <ArrowRight />
               </button>
               <button type="button" className="btn btn-dark-outline" onClick={() => onNavigate('docs')}>
                 See the API

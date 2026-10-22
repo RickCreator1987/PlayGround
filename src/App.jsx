@@ -5,10 +5,12 @@ import CheckoutModal from './components/CheckoutModal.jsx'
 import Home from './pages/Home.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Docs from './pages/Docs.jsx'
+import { products as storeProducts, draftProducts } from './data.js'
 import { FEATURED_CODE, defaultDiscounts, isDiscountActive, normalizeCode } from './lib/discounts.js'
 
 const STORAGE_KEY = 'cashport.orders.v1'
 const CODES_KEY = 'cashport.codes.v1'
+const PRODUCTS_KEY = 'cashport.products.v1'
 
 function readRoute() {
   const path = window.location.hash.replace(/^#\/?/, '')
@@ -24,6 +26,26 @@ function loadOrders() {
   } catch {
     return []
   }
+}
+
+function normalizeProduct(product) {
+  return {
+    ...product,
+    status: product.status || 'Live',
+    revenue: Number.isFinite(Number(product.revenue))
+      ? Number(product.revenue)
+      : Math.round(Number(product.price) * Number(product.sales || 0) * 100) / 100,
+  }
+}
+
+function loadProducts() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PRODUCTS_KEY) || 'null')
+    if (Array.isArray(parsed)) return parsed.map(normalizeProduct)
+  } catch {
+    // Fall through to the seeded demo catalog.
+  }
+  return [...storeProducts, ...draftProducts].map(normalizeProduct)
 }
 
 function loadCodes() {
@@ -44,6 +66,7 @@ export default function App() {
   const [route, setRoute] = useState(readRoute)
   const [orders, setOrders] = useState(loadOrders)
   const [codes, setCodes] = useState(loadCodes)
+  const [catalog, setCatalog] = useState(loadProducts)
   const [activeProduct, setActiveProduct] = useState(null)
   const [toast, setToast] = useState(null)
   const [ready, setReady] = useState(false)
@@ -84,6 +107,14 @@ export default function App() {
     }
   }, [codes])
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PRODUCTS_KEY, JSON.stringify(catalog))
+    } catch {
+      // Storage can be unavailable in private modes; the demo still works in memory.
+    }
+  }, [catalog])
+
   const showToast = useCallback((message) => {
     setToast({ id: Date.now(), message })
     clearTimeout(toastTimer.current)
@@ -114,6 +145,15 @@ export default function App() {
 
   const handlePaid = useCallback((order) => {
     setOrders((current) => [order, ...current].slice(0, 40))
+    setCatalog((current) => current.map((product) => (
+      product.name === order.product
+        ? {
+            ...product,
+            sales: (product.sales || 0) + 1,
+            revenue: Math.round(((product.revenue || 0) + order.amount) * 100) / 100,
+          }
+        : product
+    )))
     if (order.code) {
       setCodes((current) => current.map((code) => (
         normalizeCode(code.code) === normalizeCode(order.code)
@@ -138,6 +178,7 @@ export default function App() {
       <div id="main-content">
         {route === 'home' ? (
           <Home
+            products={catalog}
             onBuy={setActiveProduct}
             onNavigate={navigate}
             onSection={goToSection}
@@ -150,7 +191,9 @@ export default function App() {
           <Dashboard
             orders={orders}
             codes={codes}
+            products={catalog}
             onCodesChange={setCodes}
+            onProductsChange={setCatalog}
             onNavigate={navigate}
             onToast={showToast}
           />
